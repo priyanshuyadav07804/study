@@ -208,7 +208,6 @@ export default function SubjectPage({ params }) {
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
       syncSelectedPlaylist(json.data, playlistId);
-      showToast(video.watched ? "Marked as unwatched" : "Marked as watched");
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : "Failed to update watched status";
       setError(errorMsg);
@@ -244,15 +243,15 @@ export default function SubjectPage({ params }) {
 
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
-      {/* Top-left subjects drawer */}
+      {/* Top-right subjects drawer */}
       <button
         type="button"
-        onClick={() => setSubjectsDrawerOpen(true)}
+        onClick={() => setSubjectsDrawerOpen((current) => !current)}
         title="Subjects"
         style={{
           position: "fixed",
           top: 14,
-          left: 14,
+          right: 14,
           zIndex: 115,
           width: 44,
           height: 44,
@@ -286,7 +285,7 @@ export default function SubjectPage({ params }) {
             style={{
               position: "absolute",
               top: 0,
-              left: 0,
+              right: 0,
               bottom: 0,
               width: "min(360px, 92vw)",
               background: "var(--surface)",
@@ -296,7 +295,6 @@ export default function SubjectPage({ params }) {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-              <h2 style={{ margin: 0, fontSize: 18 }}>Subjects</h2>
               <button
                 type="button"
                 onClick={() => setSubjectsDrawerOpen(false)}
@@ -362,10 +360,10 @@ export default function SubjectPage({ params }) {
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 12, padding: "4px 8px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
-                        {(s.playlists || []).length} playlists
+                        {(s.videos || []).length} videos
                       </span>
                       <span style={{ fontSize: 12, padding: "4px 8px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
-                        {(s.videos || []).length} videos
+                        {(s.playlists || []).length} playlists
                       </span>
                     </div>
                   </Link>
@@ -616,9 +614,10 @@ export default function SubjectPage({ params }) {
                     key={video._id}
                     className="video-preview-card"
                     style={{
+                      position: "relative",
                       display: "grid",
                       gap: "14px",
-                      padding: "14px",
+                      padding: "14px 14px",
                       background: "var(--surface)",
                       border: `1px solid ${video.watched ? "rgba(134, 239, 172, 0.38)" : "var(--border)"}`,
                       borderRadius: "8px",
@@ -793,26 +792,6 @@ export default function SubjectPage({ params }) {
                           </button>
                           <div style={{ display: "flex", gap: "8px", justifyContent: "flex-start" }}>
                             <button
-                              onClick={() => toggleWatched(video)}
-                              disabled={videoActionId === video._id}
-                              title={video.watched ? "Mark as unwatched" : "Mark as watched"}
-                              className={watchedPulseVideoId === video._id ? "watched-border-pulse" : ""}
-                              style={{
-                                width: "36px",
-                                height: "36px",
-                                borderRadius: "8px",
-                                border: `1px solid ${video.watched ? "#22c55e66" : "var(--border)"}`,
-                                background: video.watched ? "#22c55e22" : "var(--surface-2)",
-                                color: video.watched ? "#86efac" : "var(--text-muted)",
-                                cursor: videoActionId === video._id ? "wait" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <CheckCircle2 size={16} />
-                            </button>
-                            <button
                               onClick={() => startEdit(video)}
                               title="Edit video"
                               style={{
@@ -848,6 +827,26 @@ export default function SubjectPage({ params }) {
                               }}
                             >
                               <Trash2 size={15} />
+                            </button>
+                            <button
+                              onClick={() => toggleWatched(video)}
+                              disabled={videoActionId === video._id}
+                              title={video.watched ? "Mark as unwatched" : "Mark as watched"}
+                              className={watchedPulseVideoId === video._id ? "watched-border-pulse" : ""}
+                              style={{
+                                width: "36px",
+                                height: "36px",
+                                borderRadius: "8px",
+                                border: `1px solid ${video.watched ? "#22c55e66" : "var(--border)"}`,
+                                background: video.watched ? "#22c55e22" : "var(--surface-2)",
+                                color: video.watched ? "#86efac" : "var(--text-muted)",
+                                cursor: videoActionId === video._id ? "wait" : "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              <CheckCircle2 size={16} />
                             </button>
                           </div>
                         </>
@@ -982,9 +981,10 @@ export default function SubjectPage({ params }) {
                         key={video._id}
                         className="video-preview-card"
                         style={{
+                          position: "relative",
                           display: "grid",
                           gap: "14px",
-                          padding: "14px",
+                          padding: "14px 14px",
                           background: "var(--surface)",
                           border: `1px solid ${video.watched ? "rgba(134, 239, 172, 0.38)" : "var(--border)"}`,
                           borderRadius: "8px",
@@ -1047,7 +1047,7 @@ export default function SubjectPage({ params }) {
                             </span>
                           </span>
                         </button>
-                        <div style={{ display: "grid", alignContent: "space-between", gap: "14px", minWidth: 0 }}>
+                        <div style={{ display: "grid", gap: "14px", minWidth: 0 }}>
                           <button
                             type="button"
                             onClick={() => setSelectedVideo(video)}

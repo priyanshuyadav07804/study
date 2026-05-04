@@ -6,7 +6,7 @@ export async function GET() {
     const subjectsCollection = await getSubjectsCollection();
     const subjects = await subjectsCollection
       .find({})
-      .project({ name: 1, videos: 1, createdAt: 1, updatedAt: 1 })
+      .project({ name: 1, videos: 1, playlists: 1, createdAt: 1, updatedAt: 1 })
       .sort({ createdAt: -1 })
       .toArray();
 
