@@ -274,6 +274,63 @@ export async function PUT(request, { params }) {
     }
 
     const body = await request.json();
+    const subjectsCollection = await getSubjectsCollection();
+    const now = new Date();
+
+    // Edit subject title (rename subject)
+    if (!body.playlistId && !body.videoId && body.subjectTitle !== undefined) {
+      const newTitle = body.subjectTitle?.trim() || "";
+      const result = await subjectsCollection.findOneAndUpdate(
+        { _id: subjectId },
+        { $set: { name: newTitle, updatedAt: now } },
+        { returnDocument: "after" }
+      );
+
+      const subject = result.value || result;
+      if (!subject) {
+        return NextResponse.json(
+          { success: false, error: "Subject not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ success: true, data: serializeSubject(subject) });
+    }
+
+    // Edit playlist title (playlist-level update)
+    if (body.playlistId && !body.videoId && body.playlistTitle !== undefined) {
+      const playlistObjectId = getObjectId(body.playlistId);
+      if (!playlistObjectId) {
+        return NextResponse.json(
+          { success: false, error: "Invalid playlist id" },
+          { status: 400 }
+        );
+      }
+
+      const result = await subjectsCollection.findOneAndUpdate(
+        { _id: subjectId, "playlists._id": playlistObjectId },
+        {
+          $set: {
+            "playlists.$.title": body.playlistTitle?.trim() || "",
+            "playlists.$.updatedAt": now,
+            updatedAt: now,
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      const subject = result.value || result;
+      if (!subject) {
+        return NextResponse.json(
+          { success: false, error: "Playlist not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ success: true, data: serializeSubject(subject) });
+    }
+
+    // If updating a video (either root or inside a playlist)
     const videoObjectId = getObjectId(body.videoId);
     if (!videoObjectId) {
       return NextResponse.json(
@@ -282,7 +339,6 @@ export async function PUT(request, { params }) {
       );
     }
 
-    const now = new Date();
     const updateData = { updatedAt: now };
 
     if (body.watched !== undefined) {
@@ -307,8 +363,6 @@ export async function PUT(request, { params }) {
       updateData["videos.$.url"] = url;
       updateData["videos.$.videoId"] = youtubeId;
     }
-
-    const subjectsCollection = await getSubjectsCollection();
 
     if (body.playlistId) {
       const playlistObjectId = getObjectId(body.playlistId);
@@ -404,6 +458,86 @@ export async function DELETE(request, { params }) {
     }
 
     const body = await request.json();
+    const subjectsCollection = await getSubjectsCollection();
+    // Delete entire subject
+    if (body.deleteSubject) {
+      const result = await subjectsCollection.findOneAndDelete({ _id: subjectId });
+      const deletedSubject = result?.value || result;
+      if (!deletedSubject) {
+        return NextResponse.json(
+          { success: false, error: "Subject not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ success: true, data: null });
+    }
+
+    // Delete an entire playlist
+    if (body.playlistId && !body.videoId && body.deletePlaylist) {
+      const playlistObjectId = getObjectId(body.playlistId);
+      if (!playlistObjectId) {
+        return NextResponse.json(
+          { success: false, error: "Invalid playlist id" },
+          { status: 400 }
+        );
+      }
+
+      const result = await subjectsCollection.findOneAndUpdate(
+        { _id: subjectId },
+        { $pull: { playlists: { _id: playlistObjectId } }, $set: { updatedAt: new Date() } },
+        { returnDocument: "after" }
+      );
+
+      const subject = result.value || result;
+      if (!subject) {
+        return NextResponse.json(
+          { success: false, error: "Subject not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ success: true, data: serializeSubject(subject) });
+    }
+
+    // Delete a video inside a playlist
+    if (body.playlistId && body.videoId) {
+      const playlistObjectId = getObjectId(body.playlistId);
+      const videoObjectId = getObjectId(body.videoId);
+      if (!playlistObjectId) {
+        return NextResponse.json(
+          { success: false, error: "Invalid playlist id" },
+          { status: 400 }
+        );
+      }
+      if (!videoObjectId) {
+        return NextResponse.json(
+          { success: false, error: "Invalid video id" },
+          { status: 400 }
+        );
+      }
+
+      const result = await subjectsCollection.findOneAndUpdate(
+        { _id: subjectId },
+        {
+          $pull: { "playlists.$[playlist].videos": { _id: videoObjectId } },
+          $set: { updatedAt: new Date() },
+        },
+        { arrayFilters: [{ "playlist._id": playlistObjectId }], returnDocument: "after" }
+      );
+
+      const subject = result.value || result;
+      if (!subject) {
+        return NextResponse.json(
+          { success: false, error: "Subject not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ success: true, data: serializeSubject(subject) });
+    }
+
+    // Delete a root-level video
     const videoObjectId = getObjectId(body.videoId);
     if (!videoObjectId) {
       return NextResponse.json(
@@ -412,7 +546,6 @@ export async function DELETE(request, { params }) {
       );
     }
 
-    const subjectsCollection = await getSubjectsCollection();
     const result = await subjectsCollection.findOneAndUpdate(
       { _id: subjectId },
       {

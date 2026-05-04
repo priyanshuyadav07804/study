@@ -2,9 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, CheckCircle2, ListPlus, Menu, Pencil, Play, Plus, Trash2, Video, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import AddYoutubePanel from "@/app/components/subject-detail/AddYoutubePanel";
+import SubjectContentPanel from "@/app/components/subject-detail/SubjectContentPanel";
+import SubjectHeaderCard from "@/app/components/subject-detail/SubjectHeaderCard";
+import SubjectsDrawer from "@/app/components/subject-detail/SubjectsDrawer";
+import VideoModal from "@/app/components/subject-detail/VideoModal";
 
 export default function SubjectPage({ params }) {
+  const router = useRouter();
   const [subject, setSubject] = useState(null);
   const [url, setUrl] = useState("");
   const [playlistUrl, setPlaylistUrl] = useState("");
@@ -13,14 +20,20 @@ export default function SubjectPage({ params }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingVideo, setEditingVideo] = useState(null);
+  const [isEditingSubject, setIsEditingSubject] = useState(false);
+  const [editingSubjectName, setEditingSubjectName] = useState("");
+  const [editingPlaylist, setEditingPlaylist] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
   const [activeView, setActiveView] = useState("videos");
   const [videoActionId, setVideoActionId] = useState("");
+  const [subjectAction, setSubjectAction] = useState("");
+  const [playlistActionId, setPlaylistActionId] = useState("");
   const [watchedPulseVideoId, setWatchedPulseVideoId] = useState("");
   const watchedPulseTimeoutRef = useRef(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
+  const [deleteUnlocked, setDeleteUnlocked] = useState(false);
 
   const [subjectsDrawerOpen, setSubjectsDrawerOpen] = useState(false);
   const [allSubjects, setAllSubjects] = useState([]);
@@ -41,6 +54,9 @@ export default function SubjectPage({ params }) {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
+      setEditingSubjectName(json.data?.name || "");
+      setIsEditingSubject(false);
+      setEditingPlaylist(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load subject");
     } finally {
@@ -149,11 +165,79 @@ export default function SubjectPage({ params }) {
     }
   };
 
-  const startEdit = (video) => {
+  const startEdit = (video, playlistId = null) => {
     setEditingVideo({
       _id: video._id,
       title: video.title || "",
       url: video.url || "",
+      _playlistId: playlistId,
+    });
+    setError("");
+  };
+
+  const updateSubjectName = async (e) => {
+    e.preventDefault();
+    setSubjectAction("save");
+    setError("");
+    try {
+      const res = await fetch(`/api/subjects/${params.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subjectTitle: editingSubjectName }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setSubject(json.data);
+      setEditingSubjectName(json.data.name || "");
+      setIsEditingSubject(false);
+      setAllSubjects((current) => current.map((item) => (item._id === json.data._id ? json.data : item)));
+      showToast("Subject updated");
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : "Failed to update subject";
+      setError(errorMsg);
+      showToast(errorMsg, "error");
+    } finally {
+      setSubjectAction("");
+    }
+  };
+
+  const deleteSubjectById = async (subjectId, subjectName) => {
+    if (!subjectId) return;
+    if (!confirm(`Delete subject "${subjectName}"? This cannot be undone.`)) return;
+
+    setSubjectAction("delete");
+    setError("");
+    try {
+      const res = await fetch(`/api/subjects/${subjectId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteSubject: true }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setAllSubjects((current) => current.filter((item) => item._id !== subjectId));
+      showToast("Subject deleted");
+      if (params.id === subjectId) {
+        router.push("/");
+      }
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : "Failed to delete subject";
+      setError(errorMsg);
+      showToast(errorMsg, "error");
+    } finally {
+      setSubjectAction("");
+    }
+  };
+
+  const navigateToSubject = (subjectId) => {
+    setSubjectsDrawerOpen(false);
+    router.push(`/subjects/${subjectId}`);
+  };
+
+  const startPlaylistEdit = (playlist) => {
+    setEditingPlaylist({
+      _id: playlist._id,
+      title: playlist.title || "",
     });
     setError("");
   };
@@ -165,14 +249,17 @@ export default function SubjectPage({ params }) {
     setVideoActionId(editingVideo._id);
     setError("");
     try {
+      const payload = {
+        videoId: editingVideo._id,
+        title: editingVideo.title,
+        url: editingVideo.url,
+      };
+      if (editingVideo._playlistId) payload.playlistId = editingVideo._playlistId;
+
       const res = await fetch(`/api/subjects/${params.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          videoId: editingVideo._id,
-          title: editingVideo.title,
-          url: editingVideo.url,
-        }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
@@ -227,20 +314,23 @@ export default function SubjectPage({ params }) {
     }
   };
 
-  const deleteVideo = async (videoId) => {
+  const deleteVideo = async (videoId, playlistId = null) => {
     setVideoActionId(videoId);
     setError("");
     try {
+      const body = playlistId ? { videoId, playlistId } : { videoId };
       const res = await fetch(`/api/subjects/${params.id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ videoId }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
       if (editingVideo?._id === videoId) setEditingVideo(null);
       if (selectedVideo?._id === videoId) setSelectedVideo(null);
+      // If a playlist was affected, sync selected playlist
+      if (playlistId) syncSelectedPlaylist(json.data, playlistId);
       showToast("Video deleted successfully!");
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : "Failed to delete video";
@@ -251,144 +341,73 @@ export default function SubjectPage({ params }) {
     }
   };
 
+  const deletePlaylist = async (playlistId) => {
+    if (!playlistId) return;
+    setPlaylistActionId(playlistId);
+    setError("");
+    try {
+      const res = await fetch(`/api/subjects/${params.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlistId, deletePlaylist: true }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setSubject(json.data);
+      if (editingPlaylist?._id === playlistId) setEditingPlaylist(null);
+      setSelectedPlaylist(null);
+      showToast("Playlist deleted successfully!");
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : "Failed to delete playlist";
+      setError(errorMsg);
+      showToast(errorMsg, "error");
+    } finally {
+      setPlaylistActionId("");
+    }
+  };
+
+  const updatePlaylist = async (e) => {
+    e.preventDefault();
+    if (!editingPlaylist?._id) return;
+
+    const playlistId = editingPlaylist._id;
+    setPlaylistActionId(playlistId);
+    setError("");
+    try {
+      const res = await fetch(`/api/subjects/${params.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlistId, playlistTitle: editingPlaylist.title }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setSubject(json.data);
+      syncSelectedPlaylist(json.data, playlistId);
+      setEditingPlaylist(null);
+      showToast("Playlist updated");
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : "Failed to update playlist";
+      setError(errorMsg);
+      showToast(errorMsg, "error");
+    } finally {
+      setPlaylistActionId("");
+    }
+  };
+
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)" }}>
-      {/* Top-right subjects drawer */}
-      <button
-        type="button"
-        onClick={() => setSubjectsDrawerOpen((current) => !current)}
-        title="Subjects"
-        style={{
-          position: "fixed",
-          top: 14,
-          right: 14,
-          zIndex: 115,
-          width: 44,
-          height: 44,
-          borderRadius: 10,
-          border: "1px solid var(--border)",
-          background: "var(--surface)",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Menu size={18} />
-      </button>
-
-      {subjectsDrawerOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={(e) => e.target === e.currentTarget && setSubjectsDrawerOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 114,
-            background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(6px)",
-          }}
-        >
-          <aside
-            style={{
-              position: "absolute",
-              top: 0,
-              right: 0,
-              bottom: 0,
-              width: "min(360px, 92vw)",
-              background: "var(--surface)",
-              borderRight: "1px solid var(--border)",
-              padding: "16px",
-              overflowY: "auto",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-              <button
-                type="button"
-                onClick={() => setSubjectsDrawerOpen(false)}
-                title="Close"
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {subjectsError && (
-              <div style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #ef444466", background: "#ef444422", color: "#fca5a5" }}>
-                {subjectsError}
-              </div>
-            )}
-
-            {subjectsLoading ? (
-              <div style={{ padding: 8 }}>
-                {[...Array(6)].map((_, idx) => (
-                  <div key={idx} className="skeleton" style={{ height: 52, borderRadius: 10, marginBottom: 10 }} />
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {allSubjects.map((s) => (
-                  <Link
-                    key={s._id}
-                    href={`/subjects/${s._id}`}
-                    onClick={() => setSubjectsDrawerOpen(false)}
-                    style={{
-                      textDecoration: "none",
-                      color: "var(--text)",
-                      padding: "12px 12px",
-                      borderRadius: 10,
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-2)",
-                      display: "grid",
-                      gap: 6,
-                      transition: "transform 0.15s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = "translateY(0px)";
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 800, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {s.name}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 12, padding: "4px 8px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
-                        {(s.videos || []).length} videos
-                      </span>
-                      <span style={{ fontSize: 12, padding: "4px 8px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
-                        {(s.playlists || []).length} playlists
-                      </span>
-                    </div>
-                  </Link>
-                ))}
-
-                {allSubjects.length === 0 && (
-                  <div style={{ padding: "18px 12px", textAlign: "center", color: "var(--text-muted)", border: "1px dashed var(--border)", borderRadius: 10 }}>
-                    No subjects yet.
-                  </div>
-                )}
-              </div>
-            )}
-          </aside>
-        </div>
-      )}
+      <SubjectsDrawer
+        isOpen={subjectsDrawerOpen}
+        subjects={allSubjects}
+        loading={subjectsLoading}
+        error={subjectsError}
+        currentSubjectId={params.id}
+        deleteUnlocked={deleteUnlocked}
+        onToggle={() => setSubjectsDrawerOpen((current) => !current)}
+        onClose={() => setSubjectsDrawerOpen(false)}
+        onNavigate={navigateToSubject}
+        onDelete={(drawerSubject) => deleteSubjectById(drawerSubject._id, drawerSubject.name)}
+      />
 
       <section style={{ maxWidth: "1180px", margin: "0 auto", padding: "32px 20px 48px" }}>
         <Link
@@ -407,722 +426,71 @@ export default function SubjectPage({ params }) {
           Subjects
         </Link>
 
-        <header style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "22px" }}>
-          <div
-            style={{
-              width: "42px",
-              height: "42px",
-              borderRadius: "8px",
-              background: "#ef444422",
-              border: "1px solid #ef444466",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <Video size={22} color="#f87171" />
-          </div>
-          <h1 style={{ fontSize: "26px", margin: 0 }}>
-            {loading ? "Loading..." : subject?.name || "Subject"}
-          </h1>
-        </header>
+        <SubjectHeaderCard
+          loading={loading}
+          subject={subject}
+          isEditing={isEditingSubject}
+          editingSubjectName={editingSubjectName}
+          subjectAction={subjectAction}
+          deleteUnlocked={deleteUnlocked}
+          onStartEdit={() => setIsEditingSubject(true)}
+          onCancelEdit={() => {
+            setIsEditingSubject(false);
+            setEditingSubjectName(subject?.name || "");
+          }}
+          onChangeName={setEditingSubjectName}
+          onSubmit={updateSubjectName}
+          onToggleDeleteLock={() => setDeleteUnlocked((current) => !current)}
+        />
 
         <div className="subject-detail-shell">
-          <aside className="video-form-panel">
-            <form
-              onSubmit={addVideo}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr",
-                gap: "12px",
-                padding: "16px",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                boxShadow: "0 14px 30px rgba(0,0,0,0.18)",
-              }}
-            >
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "10px",
-                    marginBottom: "6px",
-                  }}
-                >
-                  <h2 style={{ margin: 0, fontSize: "18px" }}>
-                    {playlistMode
-                      ? "Import Playlist"
-                      : isAddingToSelectedPlaylist
-                        ? "Add Video to Playlist"
-                        : "Add Video"}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPlaylistMode((current) => !current);
-                      setError("");
-                    }}
-                    title={playlistMode ? "Add single video" : "Import playlist"}
-                    style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "8px",
-                      border: `1px solid ${playlistMode ? "#ef444466" : "var(--border)"}`,
-                      background: playlistMode ? "#ef444422" : "var(--surface-2)",
-                      color: playlistMode ? "#f87171" : "var(--text-muted)",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {playlistMode ? <Video size={17} /> : <ListPlus size={17} />}
-                  </button>
-                </div>
-                <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "13px" }}>
-                  {playlistMode
-                    ? "Paste a public YouTube playlist link."
-                    : isAddingToSelectedPlaylist
-                      ? `Save a YouTube link into "${selectedPlaylist?.title || "this playlist"}".`
-                      : "Save a YouTube link under this subject."}
-                </p>
-              </div>
-              {playlistMode ? (
-                <input
-                  value={playlistUrl}
-                  onChange={(e) => setPlaylistUrl(e.target.value)}
-                  placeholder="Paste YouTube playlist link"
-                  style={{
-                    width: "100%",
-                    padding: "12px 14px",
-                    background: "var(--surface-2)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "8px",
-                    color: "var(--text)",
-                    font: "inherit",
-                    outline: "none",
-                  }}
-                />
-              ) : (
-                <>
-                  <input
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="Paste YouTube link"
-                    style={{
-                      width: "100%",
-                      padding: "12px 14px",
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      color: "var(--text)",
-                      font: "inherit",
-                      outline: "none",
-                    }}
-                  />
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Optional title"
-                    style={{
-                      width: "100%",
-                      padding: "12px 14px",
-                      background: "var(--surface-2)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      color: "var(--text)",
-                      font: "inherit",
-                      outline: "none",
-                    }}
-                  />
-                </>
-              )}
-              <button
-                disabled={saving}
-                style={{
-                  width: "100%",
-                  height: "44px",
-                  borderRadius: "8px",
-                  border: "none",
-                  background: saving ? "#ef444499" : "#ef4444",
-                  color: "white",
-                  cursor: saving ? "wait" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "8px",
-                  font: "inherit",
-                  fontWeight: 700,
-                }}
-                title={playlistMode ? "Import playlist" : "Add video"}
-              >
-                {playlistMode ? <ListPlus size={18} /> : <Plus size={18} />}
-                {saving ? "Saving..." : playlistMode ? "Import Playlist" : "Add Video"}
-              </button>
-            </form>
+          <AddYoutubePanel
+            playlistMode={playlistMode}
+            selectedPlaylist={selectedPlaylist}
+            isAddingToSelectedPlaylist={isAddingToSelectedPlaylist}
+            playlistUrl={playlistUrl}
+            url={url}
+            title={title}
+            saving={saving}
+            error={error}
+            onToggleMode={() => {
+              setPlaylistMode((current) => !current);
+              setError("");
+            }}
+            onPlaylistUrlChange={setPlaylistUrl}
+            onUrlChange={setUrl}
+            onTitleChange={setTitle}
+            onSubmit={addVideo}
+          />
 
-            {error && (
-              <div
-                style={{
-                  padding: "12px 14px",
-                  background: "#ef444422",
-                  border: "1px solid #ef444466",
-                  borderRadius: "8px",
-                  color: "#fca5a5",
-                  marginTop: "12px",
-                }}
-              >
-                {error}
-              </div>
-            )}
-          </aside>
-
-          <div className="video-list-panel">
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                marginBottom: "16px",
-                padding: "6px",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-              }}
-            >
-              {[
-                { id: "videos", label: "Videos", count: subject?.videos?.length || 0 },
-                { id: "playlists", label: "Playlists", count: subject?.playlists?.length || 0 },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveView(item.id);
-                    setSelectedPlaylist(null);
-                  }}
-                  style={{
-                    flex: 1,
-                    padding: "10px 12px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: activeView === item.id ? "#ef4444" : "transparent",
-                    color: activeView === item.id ? "white" : "var(--text-muted)",
-                    cursor: "pointer",
-                    font: "inherit",
-                    fontWeight: 700,
-                  }}
-                >
-                  {item.label} ({item.count})
-                </button>
-              ))}
-            </div>
-
-            {loading ? (
-              <div className="skeleton" style={{ height: "280px", borderRadius: "8px" }} />
-            ) : activeView === "videos" ? (
-              <div style={{ display: "grid", gap: "18px" }}>
-                {(subject?.videos || []).map((video) => (
-                      <article
-                    key={video._id}
-                    className="video-preview-card"
-                    style={{
-                      position: "relative",
-                      display: "grid",
-                      gap: "14px",
-                      padding: "14px 14px",
-                      background: "var(--surface)",
-                      border: `1px solid ${video.watched ? "rgba(134, 239, 172, 0.38)" : "var(--border)"}`,
-                      borderRadius: "8px",
-                      alignItems: "stretch",
-                      transition: "all 0.3s ease",
-                      boxShadow: video.watched ? "0 0 0 1px rgba(34, 197, 94, 0.08)" : "none",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setSelectedVideo(video)}
-                      style={{
-                        position: "relative",
-                        minHeight: "146px",
-                        aspectRatio: "16 / 9",
-                        border: "1px solid var(--border)",
-                        borderRadius: "8px",
-                        overflow: "hidden",
-                        background: "black",
-                        cursor: "pointer",
-                        padding: 0,
-                      }}
-                      title="Open video"
-                    >
-                      <img
-                        src={`https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`}
-                        alt=""
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          display: "block",
-                          opacity: 0.88,
-                        }}
-                      />
-                      <span
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          background: "rgba(0,0,0,0.18)",
-                        }}
-                      >
-                        <span
-                          style={{
-                            width: "52px",
-                            height: "52px",
-                            borderRadius: "50%",
-                            background: "#ef4444",
-                            color: "white",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            boxShadow: "0 10px 24px rgba(0,0,0,0.35)",
-                          }}
-                        >
-                          <Play size={22} fill="currentColor" />
-                        </span>
-                      </span>
-                    </button>
-
-                    <div style={{ display: "grid", alignContent: "space-between", gap: "14px", minWidth: 0 }}>
-                      {editingVideo?._id === video._id ? (
-                        <form onSubmit={updateVideo} style={{ display: "grid", gap: "10px" }}>
-                          <input
-                            value={editingVideo.title}
-                            onChange={(e) =>
-                              setEditingVideo((current) => ({ ...current, title: e.target.value }))
-                            }
-                            placeholder="Video title"
-                            style={{
-                              width: "100%",
-                              padding: "10px 12px",
-                              background: "var(--surface-2)",
-                              border: "1px solid var(--border)",
-                              borderRadius: "8px",
-                              color: "var(--text)",
-                              font: "inherit",
-                              outline: "none",
-                            }}
-                          />
-                          <div style={{ display: "flex", gap: "8px" }}>
-                            <input
-                              value={editingVideo.url}
-                              onChange={(e) =>
-                                setEditingVideo((current) => ({ ...current, url: e.target.value }))
-                              }
-                              placeholder="YouTube link"
-                              style={{
-                                flex: 1,
-                                minWidth: 0,
-                                padding: "10px 12px",
-                                background: "var(--surface-2)",
-                                border: "1px solid var(--border)",
-                                borderRadius: "8px",
-                                color: "var(--text)",
-                                font: "inherit",
-                                outline: "none",
-                              }}
-                            />
-                            <button
-                              disabled={videoActionId === video._id}
-                              title="Save video"
-                              style={{
-                                width: "40px",
-                                height: "40px",
-                                borderRadius: "8px",
-                                border: "none",
-                                background: "#22c55e",
-                                color: "white",
-                                cursor: videoActionId === video._id ? "wait" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Check size={17} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditingVideo(null)}
-                              title="Cancel edit"
-                              style={{
-                                width: "40px",
-                                height: "40px",
-                                borderRadius: "8px",
-                                border: "1px solid var(--border)",
-                                background: "var(--surface-2)",
-                                color: "var(--text-muted)",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <X size={17} />
-                            </button>
-                          </div>
-                        </form>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedVideo(video)}
-                            style={{
-                              padding: 0,
-                              background: "none",
-                              border: "none",
-                              color: "inherit",
-                              textAlign: "left",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <h2
-                              style={{
-                                margin: "0 0 8px",
-                                fontSize: "18px",
-                                fontWeight: 700,
-                                lineHeight: 1.3,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                wordBreak: "break-word",
-                              }}
-                            >
-                              {video.title || "Untitled video"}
-                            </h2>
-                          </button>
-                          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-start" }}>
-                            <button
-                              onClick={() => startEdit(video)}
-                              title="Edit video"
-                              style={{
-                                width: "36px",
-                                height: "36px",
-                                borderRadius: "8px",
-                                border: "1px solid var(--border)",
-                                background: "var(--surface-2)",
-                                color: "var(--text-muted)",
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            <button
-                              onClick={() => deleteVideo(video._id)}
-                              disabled={videoActionId === video._id}
-                              title="Delete video"
-                              style={{
-                                width: "36px",
-                                height: "36px",
-                                borderRadius: "8px",
-                                border: "1px solid #ef444466",
-                                background: "#ef444422",
-                                color: "#f87171",
-                                cursor: videoActionId === video._id ? "wait" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                            <button
-                              onClick={() => toggleWatched(video)}
-                              disabled={videoActionId === video._id}
-                              title={video.watched ? "Mark as unwatched" : "Mark as watched"}
-                              className={watchedPulseVideoId === video._id ? "watched-border-pulse" : ""}
-                              style={{
-                                width: "36px",
-                                height: "36px",
-                                borderRadius: "8px",
-                                border: `1px solid ${video.watched ? "#22c55e66" : "var(--border)"}`,
-                                background: video.watched ? "#22c55e22" : "var(--surface-2)",
-                                color: video.watched ? "#86efac" : "var(--text-muted)",
-                                cursor: videoActionId === video._id ? "wait" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <CheckCircle2 size={16} />
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </article>
-                ))}
-
-                {(subject?.videos || []).length === 0 && (
-                  <div
-                    style={{
-                      padding: "46px 18px",
-                      textAlign: "center",
-                      color: "var(--text-muted)",
-                      border: "1px dashed var(--border)",
-                      borderRadius: "8px",
-                    }}
-                  >
-                    No YouTube videos yet.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: "18px" }}>
-                {selectedPlaylist && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPlaylist(null)}
-                    style={{
-                      justifySelf: "start",
-                      padding: "9px 12px",
-                      background: "var(--surface)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "8px",
-                      color: "var(--text-muted)",
-                      cursor: "pointer",
-                      font: "inherit",
-                    }}
-                  >
-                    Back to playlists
-                  </button>
-                )}
-
-                {!selectedPlaylist ? (
-                  <>
-                    {(subject?.playlists || []).map((playlist) => (
-                      <button
-                        key={playlist._id}
-                        type="button"
-                        onClick={() => setSelectedPlaylist(playlist)}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "120px minmax(0, 1fr)",
-                          gap: "14px",
-                          padding: "14px",
-                          background: "var(--surface)",
-                          border: "1px solid var(--border)",
-                          borderRadius: "8px",
-                          color: "var(--text)",
-                          cursor: "pointer",
-                          textAlign: "left",
-                        }}
-                      >
-                        <div
-                          style={{
-                            minHeight: "78px",
-                            borderRadius: "8px",
-                            background: "#ef444422",
-                            border: "1px solid #ef444466",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            color: "#f87171",
-                            overflow: "hidden",
-                          }}
-                        >
-                          {playlist.videos && playlist.videos.length > 0 ? (
-                            <img
-                              src={`https://img.youtube.com/vi/${playlist.videos[0].videoId}/mqdefault.jpg`}
-                              alt=""
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                              }}
-                            />
-                          ) : (
-                            <ListPlus size={28} />
-                          )}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <h2
-                            style={{
-                              margin: "0 0 8px",
-                              fontSize: "18px",
-                              fontWeight: 700,
-                              overflowWrap: "anywhere",
-                            }}
-                          >
-                            {playlist.title || "YouTube Playlist"}
-                          </h2>
-                          <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "13px" }}>
-                            {(playlist.videos || []).length} videos imported
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-
-                    {(subject?.playlists || []).length === 0 && (
-                      <div
-                        style={{
-                          padding: "46px 18px",
-                          textAlign: "center",
-                          color: "var(--text-muted)",
-                          border: "1px dashed var(--border)",
-                          borderRadius: "8px",
-                        }}
-                      >
-                        No playlists imported yet.
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <h2 style={{ margin: 0, fontSize: "20px" }}>
-                      {selectedPlaylist.title || "YouTube Playlist"}
-                    </h2>
-                    {(selectedPlaylist.videos || []).map((video) => {
-                      const isDeleting = videoActionId === video._id;
-                      return (
-                        <article
-                        key={video._id}
-                        className="video-preview-card"
-                        style={{
-                          position: "relative",
-                          display: "grid",
-                          gap: "14px",
-                          padding: "14px 14px",
-                          background: "var(--surface)",
-                          border: `1px solid ${video.watched ? "rgba(134, 239, 172, 0.38)" : "var(--border)"}`,
-                          borderRadius: "8px",
-                          alignItems: "stretch",
-                          transition: "all 0.3s ease",
-                          boxShadow: video.watched ? "0 0 0 1px rgba(34, 197, 94, 0.08)" : "none",
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setSelectedVideo(video)}
-                          style={{
-                            position: "relative",
-                            minHeight: "146px",
-                            aspectRatio: "16 / 9",
-                            border: "1px solid var(--border)",
-                            borderRadius: "8px",
-                            overflow: "hidden",
-                            background: "black",
-                            cursor: "pointer",
-                            padding: 0,
-                          }}
-                          title="Open video"
-                        >
-                          <img
-                            src={`https://img.youtube.com/vi/${video.videoId}/hqdefault.jpg`}
-                            alt=""
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                              display: "block",
-                              opacity: 0.88,
-                            }}
-                          />
-                          <span
-                            style={{
-                              position: "absolute",
-                              inset: 0,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              background: "rgba(0,0,0,0.18)",
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: "52px",
-                                height: "52px",
-                                borderRadius: "50%",
-                                background: "#ef4444",
-                                color: "white",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                boxShadow: "0 10px 24px rgba(0,0,0,0.35)",
-                              }}
-                            >
-                              <Play size={22} fill="currentColor" />
-                            </span>
-                          </span>
-                        </button>
-                        <div style={{ display: "grid", gap: "14px", minWidth: 0 }}>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedVideo(video)}
-                            style={{
-                              padding: 0,
-                              background: "none",
-                              border: "none",
-                              color: "inherit",
-                              textAlign: "left",
-                              cursor: "pointer",
-                            }}
-                          >
-                            <h3
-                              style={{
-                                margin: "0 0 8px",
-                                fontSize: "18px",
-                                fontWeight: 700,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                display: "-webkit-box",
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical",
-                                wordBreak: "break-word",
-                              }}
-                            >
-                              {video.title || "Untitled video"}
-                            </h3>
-                          </button>
-                          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-start" }}>
-                            <button
-                              onClick={() => toggleWatched(video, selectedPlaylist._id)}
-                              disabled={videoActionId === video._id}
-                              title={video.watched ? "Mark as unwatched" : "Mark as watched"}
-                              className={watchedPulseVideoId === video._id ? "watched-border-pulse" : ""}
-                              style={{
-                                width: "36px",
-                                height: "36px",
-                                borderRadius: "8px",
-                                border: `1px solid ${video.watched ? "#22c55e66" : "var(--border)"}`,
-                                background: video.watched ? "#22c55e22" : "var(--surface-2)",
-                                color: video.watched ? "#86efac" : "var(--text-muted)",
-                                cursor: videoActionId === video._id ? "wait" : "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <CheckCircle2 size={16} />
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-                    );
-                    })}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          <SubjectContentPanel
+            loading={loading}
+            subject={subject}
+            activeView={activeView}
+            selectedPlaylist={selectedPlaylist}
+            editingVideo={editingVideo}
+            editingPlaylist={editingPlaylist}
+            videoActionId={videoActionId}
+            playlistActionId={playlistActionId}
+            watchedPulseVideoId={watchedPulseVideoId}
+            onSetActiveView={setActiveView}
+            onClearSelectedPlaylist={() => setSelectedPlaylist(null)}
+            onSelectPlaylist={setSelectedPlaylist}
+            onOpenVideo={setSelectedVideo}
+            onStartEditVideo={startEdit}
+            onEditingVideoChange={setEditingVideo}
+            onUpdateVideo={updateVideo}
+            onCancelEditVideo={() => setEditingVideo(null)}
+            onDeleteVideo={deleteVideo}
+            onToggleWatched={toggleWatched}
+            onStartEditPlaylist={startPlaylistEdit}
+            onEditPlaylistChange={(value) =>
+              setEditingPlaylist((current) => (current ? { ...current, title: value } : current))
+            }
+            onUpdatePlaylist={updatePlaylist}
+            onCancelEditPlaylist={() => setEditingPlaylist(null)}
+            onDeletePlaylist={deletePlaylist}
+          />
         </div>
       </section>
 
@@ -1130,7 +498,7 @@ export default function SubjectPage({ params }) {
         <div
           style={{
             position: "fixed",
-            top: "20px",
+            top: "70px",
             right: "20px",
             zIndex: 110,
             padding: "12px 16px",
@@ -1148,85 +516,7 @@ export default function SubjectPage({ params }) {
       )}
 
       {selectedVideo && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 100,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "20px",
-            background: "rgba(0,0,0,0.78)",
-            backdropFilter: "blur(6px)",
-          }}
-          onClick={(e) => e.target === e.currentTarget && setSelectedVideo(null)}
-        >
-          <div
-            className="scale-in"
-            style={{
-              width: "min(980px, 100%)",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "8px",
-              overflow: "hidden",
-              boxShadow: "0 28px 80px rgba(0,0,0,0.55)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "14px",
-                padding: "14px 16px",
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: "18px",
-                  fontWeight: 700,
-                  overflowWrap: "anywhere",
-                }}
-              >
-                {selectedVideo.title || "Untitled video"}
-              </h2>
-              <button
-                onClick={() => setSelectedVideo(null)}
-                title="Close video"
-                style={{
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "8px",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <X size={17} />
-              </button>
-            </div>
-
-            <div style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", background: "black" }}>
-              <iframe
-                src={`https://www.youtube.com/embed/${selectedVideo.videoId}?autoplay=1`}
-                title={selectedVideo.title || "YouTube video"}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }}
-              />
-            </div>
-          </div>
-        </div>
+        <VideoModal video={selectedVideo} onClose={() => setSelectedVideo(null)} />
       )}
     </main>
   );

@@ -27,6 +27,18 @@ body {
   min-height: 100vh;
 }
 
+#delete_button{
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid #ef444466;
+    background-color: #ef444422;
+    color: #f87171;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 h1, h2, h3, h4, h5 {
   font-family: 'Syne', sans-serif;
 }
@@ -133,6 +145,32 @@ h1, h2, h3, h4, h5 {
 
 .scale-in {
   animation: scaleIn 0.2s ease forwards;
+}
+
+.subject-delete-confirm {
+  animation: slideUp 0.2s ease forwards;
+  transform-origin: top;
+}
+
+.subject-delete-collapse {
+  animation: slideDown 0.22s ease forwards;
+}
+
+.subject-card-removing {
+  animation: subjectCardRemoving 0.26s ease forwards;
+  transform-origin: center top;
+  pointer-events: none;
+}
+
+@keyframes subjectCardRemoving {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(14px);
+  }
 }
 
 .skeleton {

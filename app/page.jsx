@@ -1,14 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { LibraryBig, ListPlus, Plus, RefreshCw, Video } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { LibraryBig, Lock, LockOpen, Plus, RefreshCw } from "lucide-react";
+import SubjectCard from "@/app/components/SubjectCard";
 
 export default function Home() {
+  const router = useRouter();
   const [subjects, setSubjects] = useState([]);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleteUnlocked, setDeleteUnlocked] = useState(false);
+  const [editingSubjectId, setEditingSubjectId] = useState("");
+  const [editingSubjectName, setEditingSubjectName] = useState("");
+  const [pendingDeleteSubjectId, setPendingDeleteSubjectId] = useState("");
+  const [deletingSubjectId, setDeletingSubjectId] = useState("");
+  const [subjectAction, setSubjectAction] = useState("");
   const [error, setError] = useState("");
 
   const fetchSubjects = async () => {
@@ -53,6 +61,70 @@ export default function Home() {
     }
   };
 
+  const startEditSubject = (subject) => {
+    setEditingSubjectId(subject._id);
+    setEditingSubjectName(subject.name || "");
+    setError("");
+  };
+
+  const cancelEditSubject = () => {
+    setEditingSubjectId("");
+    setEditingSubjectName("");
+  };
+
+  const cancelDeleteSubject = () => {
+    setPendingDeleteSubjectId("");
+  };
+
+  const updateSubject = async (e, subjectId) => {
+    e.preventDefault();
+    setSubjectAction("save");
+    setError("");
+    try {
+      const res = await fetch(`/api/subjects/${subjectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subjectTitle: editingSubjectName }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setSubjects((current) => current.map((item) => (item._id === subjectId ? json.data : item)));
+      cancelEditSubject();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update subject");
+    } finally {
+      setSubjectAction("");
+    }
+  };
+
+  const deleteSubject = async (subject) => {
+    if (!deleteUnlocked) return;
+
+    setSubjectAction("delete");
+    setDeletingSubjectId(subject._id);
+    setError("");
+    try {
+      const res = await fetch(`/api/subjects/${subject._id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteSubject: true }),
+      });
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error);
+      setTimeout(() => {
+        setSubjects((current) => current.filter((item) => item._id !== subject._id));
+        setPendingDeleteSubjectId("");
+        setDeletingSubjectId("");
+      }, 260);
+      if (editingSubjectId === subject._id) cancelEditSubject();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete subject");
+      setDeletingSubjectId("");
+    } finally {
+      setSubjectAction("");
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <section className="mx-auto max-w-6xl px-5 py-10">
@@ -64,13 +136,27 @@ export default function Home() {
             <h1 className="m-0 text-[26px] font-bold">Subjects</h1>
           </div>
 
-          <button
-            onClick={fetchSubjects}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition hover:text-[var(--text)]"
-            title="Refresh"
-          >
-            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteUnlocked((current) => !current)}
+              className={`flex h-10 w-10 items-center justify-center rounded-lg border bg-[var(--surface)] transition ${
+                deleteUnlocked
+                  ? "border-amber-400/40 text-amber-300"
+                  : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]"
+              }`}
+              title={deleteUnlocked ? "Unlock delete enabled" : "Delete locked"}
+            >
+              {deleteUnlocked ? <LockOpen size={16} /> : <Lock size={16} />}
+            </button>
+            <button
+              onClick={fetchSubjects}
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] transition hover:text-[var(--text)]"
+              title="Refresh"
+            >
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
         </header>
 
         <form onSubmit={addSubject} className="mb-7 flex gap-3">
@@ -104,31 +190,24 @@ export default function Home() {
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-5">
             {subjects.map((subject) => (
-              <Link
+              <SubjectCard
                 key={subject._id}
-                href={`/subjects/${subject._id}`}
-                className="group grid min-h-48 content-between gap-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-6 text-[var(--text)] no-underline shadow-[0_18px_38px_rgba(0,0,0,0.22)] transition hover:-translate-y-1 hover:border-red-400/40 hover:bg-[#171724]"
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-sky-400/35 bg-sky-500/15">
-                  <Video size={22} className="text-sky-300" />
-                </div>
-
-                <div>
-                  <h2 className="mb-4 break-words text-2xl font-bold leading-tight">
-                    {subject.name}
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm font-semibold text-[var(--text-muted)] transition group-hover:text-[var(--text)]">
-                      <Video size={15} />
-                      {(subject.videos || []).length} videos
-                    </div>
-                    <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm font-semibold text-[var(--text-muted)] transition group-hover:text-[var(--text)]">
-                      <ListPlus size={15} />
-                      {(subject.playlists || []).length} playlists
-                    </div>
-                  </div>
-                </div>
-              </Link>
+                subject={subject}
+                isEditing={editingSubjectId === subject._id}
+                isConfirmingDelete={pendingDeleteSubjectId === subject._id}
+                isDeleting={deletingSubjectId === subject._id}
+                editingName={editingSubjectName}
+                actionState={subjectAction}
+                deleteUnlocked={deleteUnlocked}
+                onOpen={() => router.push(`/subjects/${subject._id}`)}
+                onStartEdit={() => startEditSubject(subject)}
+                onNameChange={setEditingSubjectName}
+                onSave={(e) => updateSubject(e, subject._id)}
+                onCancel={cancelEditSubject}
+                onRequestDelete={() => setPendingDeleteSubjectId(subject._id)}
+                onConfirmDelete={() => deleteSubject(subject)}
+                onCancelDelete={cancelDeleteSubject}
+              />
             ))}
 
             {subjects.length === 0 && (
