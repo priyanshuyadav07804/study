@@ -196,6 +196,43 @@ export async function POST(request, { params }) {
       createdAt: now,
     };
 
+    if (body.playlistId) {
+      const playlistObjectId = getObjectId(body.playlistId);
+      if (!playlistObjectId) {
+        return NextResponse.json(
+          { success: false, error: "Invalid playlist id" },
+          { status: 400 }
+        );
+      }
+
+      const result = await subjectsCollection.findOneAndUpdate(
+        { _id: subjectId, "playlists._id": playlistObjectId },
+        {
+          $push: {
+            "playlists.$.videos": { $each: [video], $position: 0 },
+          },
+          $set: {
+            "playlists.$.updatedAt": now,
+            updatedAt: now,
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      const subject = result.value || result;
+      if (!subject) {
+        return NextResponse.json(
+          { success: false, error: "Playlist not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json(
+        { success: true, data: serializeSubject(subject) },
+        { status: 201 }
+      );
+    }
+
     const result = await subjectsCollection.findOneAndUpdate(
       { _id: subjectId },
       {

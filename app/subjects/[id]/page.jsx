@@ -26,6 +26,7 @@ export default function SubjectPage({ params }) {
   const [allSubjects, setAllSubjects] = useState([]);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
   const [subjectsError, setSubjectsError] = useState("");
+  const isAddingToSelectedPlaylist = Boolean(selectedPlaylist) && !playlistMode;
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
@@ -116,14 +117,23 @@ export default function SubjectPage({ params }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          playlistMode ? { playlistUrl } : { url, title: videoTitle }
+          playlistMode
+            ? { playlistUrl }
+            : {
+                url,
+                title: videoTitle,
+                playlistId: selectedPlaylist?._id,
+              }
         ),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
+      syncSelectedPlaylist(json.data, selectedPlaylist?._id);
       if (playlistMode) {
         showToast("Playlist imported successfully!");
+      } else if (selectedPlaylist?._id) {
+        showToast("Video added to playlist successfully!");
       } else {
         showToast("Video added successfully!");
       }
@@ -443,7 +453,11 @@ export default function SubjectPage({ params }) {
                   }}
                 >
                   <h2 style={{ margin: 0, fontSize: "18px" }}>
-                    {playlistMode ? "Import Playlist" : "Add Video"}
+                    {playlistMode
+                      ? "Import Playlist"
+                      : isAddingToSelectedPlaylist
+                        ? "Add Video to Playlist"
+                        : "Add Video"}
                   </h2>
                   <button
                     type="button"
@@ -472,7 +486,9 @@ export default function SubjectPage({ params }) {
                 <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "13px" }}>
                   {playlistMode
                     ? "Paste a public YouTube playlist link."
-                    : "Save a YouTube link under this subject."}
+                    : isAddingToSelectedPlaylist
+                      ? `Save a YouTube link into "${selectedPlaylist?.title || "this playlist"}".`
+                      : "Save a YouTube link under this subject."}
                 </p>
               </div>
               {playlistMode ? (
