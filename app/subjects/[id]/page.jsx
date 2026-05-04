@@ -19,6 +19,9 @@ export default function SubjectPage({ params }) {
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [checkingApiKey, setCheckingApiKey] = useState(false);
+  const [apiKeyMessage, setApiKeyMessage] = useState("");
+  const [apiKeyMessageType, setApiKeyMessageType] = useState("success");
   const [editingVideo, setEditingVideo] = useState(null);
   const [isEditingSubject, setIsEditingSubject] = useState(false);
   const [editingSubjectName, setEditingSubjectName] = useState("");
@@ -115,6 +118,7 @@ export default function SubjectPage({ params }) {
     }
     return "";
   };
+
 
   const addVideo = async (e) => {
     e.preventDefault();
@@ -452,6 +456,9 @@ export default function SubjectPage({ params }) {
             url={url}
             title={title}
             saving={saving}
+            checkingApiKey={checkingApiKey}
+            apiKeyMessage={apiKeyMessage}
+            apiKeyMessageType={apiKeyMessageType}
             error={error}
             onToggleMode={() => {
               setPlaylistMode((current) => !current);

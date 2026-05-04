@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CheckCircle2, ListPlus, Pencil, Play, Trash2, X } from "lucide-react";
+import { Check, CheckCircle2, ExternalLink, ListPlus, Pencil, Play, Trash2, X } from "lucide-react";
 
 function PlaylistEditForm({ value, onChange, onSubmit, onCancel, disabled }) {
   return (
@@ -65,6 +65,11 @@ function PlaylistEditForm({ value, onChange, onSubmit, onCancel, disabled }) {
       </div>
     </form>
   );
+}
+
+function openExternalLink(url) {
+  if (!url) return;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function VideoCard({
@@ -243,7 +248,7 @@ function VideoCard({
                   wordBreak: "break-word",
                 }}
               >
-                {video.title || "Untitled video"}
+                {video.serialNumber ? `${video.serialNumber}. ` : ""}{video.title || "Untitled video"}
               </h2>
             </button>
             <div
@@ -479,6 +484,28 @@ function PlaylistListCard({
             >
               <Trash2 size={14} />
             </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openExternalLink(playlist.url);
+              }}
+              title="Open playlist in YouTube"
+              style={{
+                marginLeft: "auto",
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <ExternalLink size={14} />
+            </button>
           </div>
         )}
       </div>
@@ -657,10 +684,30 @@ export default function SubjectContentPanel({
                   </div>
                 ) : (
                   <>
-                    <h2 style={{ margin: 0, fontSize: "20px" }}>
-                      {selectedPlaylist.title || "YouTube Playlist"}
-                    </h2>
+                    <div style={{ minWidth: 0 }}>
+                      <h2 style={{ margin: 0, fontSize: "20px" }}>
+                        {selectedPlaylist.title || "YouTube Playlist"}
+                      </h2>
+                    </div>
                     <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => openExternalLink(selectedPlaylist.url)}
+                        title="Open playlist in YouTube"
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: "1px solid var(--border)",
+                          background: "var(--surface)",
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <ExternalLink size={14} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => onStartEditPlaylist(selectedPlaylist)}

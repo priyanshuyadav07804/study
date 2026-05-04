@@ -48,43 +48,130 @@ function decodeXml(text) {
     .replaceAll("&gt;", ">");
 }
 
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+
+function getYoutubeApiErrorMessage(errorPayload) {
+  const details = errorPayload?.error?.errors || [];
+  const firstDetail = details[0];
+  const reason = firstDetail?.reason || "";
+  const message = errorPayload?.error?.message || "";
+
+  if (reason === "keyInvalid") {
+    return "Your YouTube API key is invalid. Check YOUTUBE_API_KEY in .env.local.";
+  }
+
+  if (reason === "quotaExceeded") {
+    return "Your YouTube API quota has been exceeded. Try again later or use a different API key.";
+  }
+
+  if (
+    reason === "playlistNotFound" ||
+    reason === "notFound" ||
+    message.toLowerCase().includes("playlist")
+  ) {
+    return "This playlist could not be found. Make sure the playlist exists and is public.";
+  }
+
+  if (
+    reason === "playlistItemsNotAccessible" ||
+    reason === "forbidden" ||
+    message.toLowerCase().includes("forbidden")
+  ) {
+    return "This playlist is not accessible. Make sure it is public and your API key has YouTube Data API access.";
+  }
+
+  return message || "Failed to fetch playlist from YouTube.";
+}
+
 async function getPlaylistVideos(playlistUrl) {
   const playlistId = getPlaylistId(playlistUrl);
   if (!playlistId) return null;
 
-  const response = await fetch(
-    `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`,
-    { cache: "no-store" }
-  );
+  if (!YOUTUBE_API_KEY) {
+    throw new Error("Missing YOUTUBE_API_KEY environment variable");
+  }
 
-  if (!response.ok) return null;
+  const videos = [];
+  let nextPageToken = "";
+  let playlistTitle = "YouTube Playlist";
 
-  const xml = await response.text();
-  const entries = xml.match(/<entry>[\s\S]*?<\/entry>/g) || [];
-  const feedTitle = xml.match(/<title>([\s\S]*?)<\/title>/)?.[1];
+  // Fetch playlist metadata to get the title
+  try {
+    const playlistParams = new URLSearchParams({
+      part: "snippet",
+      id: playlistId,
+      key: YOUTUBE_API_KEY,
+    });
 
-  const videos = entries
-    .map((entry) => {
-      const videoId = entry.match(/<yt:videoId>(.*?)<\/yt:videoId>/)?.[1];
-      const title = entry.match(/<title>([\s\S]*?)<\/title>/)?.[1];
+    const playlistResponse = await fetch(
+      `https://www.googleapis.com/youtube/v3/playlists?${playlistParams.toString()}`,
+      { cache: "no-store" }
+    );
 
-      if (!videoId) return null;
+    if (playlistResponse.ok) {
+      const playlistData = await playlistResponse.json();
+      if (playlistData.items && playlistData.items.length > 0) {
+        const playlistInfo = playlistData.items[0];
+        if (playlistInfo?.snippet?.title) {
+          playlistTitle = playlistInfo.snippet.title;
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Failed to fetch playlist metadata:", error);
+    // Continue with default title
+  }
 
-      return {
+  let serialNumber = 1;
+
+  do {
+    const params = new URLSearchParams({
+      part: "snippet",
+      maxResults: "50",
+      playlistId,
+      key: YOUTUBE_API_KEY,
+    });
+
+    if (nextPageToken) {
+      params.set("pageToken", nextPageToken);
+    }
+
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/playlistItems?${params.toString()}`,
+      { cache: "no-store" }
+    );
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => null);
+      throw new Error(getYoutubeApiErrorMessage(errorPayload));
+    }
+
+    const data = await response.json();
+    const items = data.items || [];
+
+    for (const item of items) {
+      const videoId = item?.snippet?.resourceId?.videoId;
+      if (!videoId) continue;
+
+      videos.push({
         _id: new ObjectId(),
         url: `https://www.youtube.com/watch?v=${videoId}`,
         videoId,
-        title: title ? decodeXml(title.trim()) : "",
+        serialNumber,
+        title: item?.snippet?.title?.trim() || "",
         createdAt: new Date(),
-      };
-    })
-    .filter(Boolean);
+      });
+      serialNumber += 1;
+    }
+
+    nextPageToken = data.nextPageToken || "";
+  } while (nextPageToken);
 
   return {
     _id: new ObjectId(),
     playlistId,
     url: playlistUrl,
-    title: feedTitle ? decodeXml(feedTitle.trim()) : "YouTube Playlist",
+    title: playlistTitle ? decodeXml(playlistTitle.trim()) : "YouTube Playlist",
     videos,
     createdAt: new Date(),
   };
@@ -256,8 +343,16 @@ export async function POST(request, { params }) {
     );
   } catch (error) {
     console.error(`[POST /api/subjects/${params.id}]`, error);
+    const message =
+      error instanceof Error &&
+      (error.message.includes("YouTube") ||
+        error.message.includes("playlist") ||
+        error.message.includes("quota") ||
+        error.message.includes("API key"))
+        ? error.message
+        : "Failed to add YouTube content";
     return NextResponse.json(
-      { success: false, error: "Failed to add YouTube content" },
+      { success: false, error: message },
       { status: 500 }
     );
   }

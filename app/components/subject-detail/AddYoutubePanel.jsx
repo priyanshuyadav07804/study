@@ -1,6 +1,6 @@
 "use client";
 
-import { ListPlus, Plus, Video } from "lucide-react";
+import { KeyRound, ListPlus, Plus, Video } from "lucide-react";
 
 export default function AddYoutubePanel({
   playlistMode,
@@ -10,6 +10,9 @@ export default function AddYoutubePanel({
   url,
   title,
   saving,
+  checkingApiKey,
+  apiKeyMessage,
+  apiKeyMessageType,
   error,
   onToggleMode,
   onPlaylistUrlChange,
