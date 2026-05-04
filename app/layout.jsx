@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Subject Videos",
+  title: "Memanshi",
   description: "Organize YouTube videos by subject",
 };
 
