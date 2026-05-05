@@ -2,10 +2,13 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { LibraryBig, Menu, X, Video, ListPlus } from "lucide-react";
+import { LibraryBig, Menu, X, Video, ListPlus, LogOut, User } from "lucide-react";
+import { useAuth } from "@/app/context/AuthContext";
 
 export default function Header() {
+  const { isAuthenticated, user, logout, loading: authLoading } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -101,6 +104,144 @@ export default function Header() {
         >
           <Menu size={18} />
         </button>
+
+        {/* Auth Section */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {!authLoading && !isAuthenticated ? (
+            <>
+              <Link
+                href="/auth/login"
+                style={{
+                  padding: "8px 16px",
+                  color: "var(--text)",
+                  textDecoration: "none",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Login
+              </Link>
+              <Link
+                href="/auth/signup"
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  background: "#ef444422",
+                  border: "1px solid #ef444466",
+                  color: "#f87171",
+                  textDecoration: "none",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Sign Up
+              </Link>
+            </>
+          ) : !authLoading && isAuthenticated ? (
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  border: `1px solid ${userDropdownOpen ? "#ef444466" : "var(--border)"}`,
+                  background: userDropdownOpen ? "#ef444422" : "var(--surface-2)",
+                  color: userDropdownOpen ? "#f87171" : "var(--text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <User size={18} />
+              </button>
+
+              {userDropdownOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    right: 0,
+                    marginTop: 8,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    minWidth: 200,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    zIndex: 300,
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "12px 16px",
+                      borderBottom: "1px solid var(--border)",
+                      fontSize: 12,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {user?.email}
+                  </div>
+                  <Link
+                    href="/auth/profile"
+                    onClick={() => setUserDropdownOpen(false)}
+                    style={{
+                      display: "block",
+                      padding: "10px 16px",
+                      color: "var(--text)",
+                      textDecoration: "none",
+                      fontSize: 14,
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    My Profile
+                  </Link>
+                  <Link
+                    href="/auth/settings"
+                    onClick={() => setUserDropdownOpen(false)}
+                    style={{
+                      display: "block",
+                      padding: "10px 16px",
+                      color: "var(--text)",
+                      textDecoration: "none",
+                      fontSize: 14,
+                      borderBottom: "1px solid var(--border)",
+                    }}
+                  >
+                    Settings
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      logout();
+                      setUserDropdownOpen(false);
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px 16px",
+                      color: "#ef4444",
+                      background: "none",
+                      border: "none",
+                      fontSize: 14,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <LogOut size={16} />
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
       </header>
 
       {sidebarOpen && (
