@@ -72,6 +72,58 @@ function openExternalLink(url) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function getPlaylistProgress(playlist) {
+  const videos = playlist?.videos || [];
+  const total = videos.length;
+  const watched = videos.filter((video) => video.watched).length;
+  const percent = total > 0 ? Math.round((watched / total) * 100) : 0;
+
+  return { total, watched, percent };
+}
+
+function PlaylistProgress({ playlist }) {
+  const progress = getPlaylistProgress(playlist);
+
+  return (
+    <div style={{ display: "grid", gap: "7px" }}>
+      <div
+        aria-label={`Playlist progress ${progress.percent}%`}
+        style={{
+          height: "10px",
+          overflow: "hidden",
+          borderRadius: "999px",
+          border: "1px solid var(--border)",
+          background: "var(--surface-2)",
+        }}
+      >
+        <div
+          style={{
+            width: `${progress.percent}%`,
+            height: "100%",
+            borderRadius: "999px",
+            background: progress.percent === 100 ? "#22c55e" : "#ef4444",
+            transition: "width 0.25s ease",
+          }}
+        />
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "12px",
+          color: "var(--text-muted)",
+          fontSize: "12px",
+          fontWeight: 700,
+        }}
+      >
+        <span>Watched {progress.watched} of {progress.total}</span>
+        <span>{progress.percent}%</span>
+      </div>
+    </div>
+  );
+}
+
 function VideoCard({
   video,
   editingVideo,
@@ -440,9 +492,7 @@ function PlaylistListCard({
                   {playlist.title || "YouTube Playlist"}
                 </h2>
               </button>
-              <p style={{ margin: 0, color: "var(--text-muted)", fontSize: "13px" }}>
-                {(playlist.videos || []).length} Videos
-              </p>
+              <PlaylistProgress playlist={playlist} />
             </>
           )}
         </div>
@@ -671,7 +721,7 @@ export default function SubjectContentPanel({
             </>
           ) : (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between" }}>
+              <div style={{ display: "grid", gap: "12px" }}>
                 {editingPlaylist?._id === selectedPlaylist._id ? (
                   <div style={{ flex: 1 }}>
                     <PlaylistEditForm
@@ -683,8 +733,8 @@ export default function SubjectContentPanel({
                     />
                   </div>
                 ) : (
-                  <>
-                    <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between" }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
                       <h2 style={{ margin: 0, fontSize: "20px" }}>
                         {selectedPlaylist.title || "YouTube Playlist"}
                       </h2>
@@ -724,8 +774,9 @@ export default function SubjectContentPanel({
                         <Pencil size={14} />
                       </button>
                     </div>
-                  </>
+                  </div>
                 )}
+                <PlaylistProgress playlist={selectedPlaylist} />
               </div>
 
               {(selectedPlaylist.videos || []).map((video) => (

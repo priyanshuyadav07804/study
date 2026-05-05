@@ -44,6 +44,14 @@ export default function SubjectPage({ params }) {
   const [subjectsError, setSubjectsError] = useState("");
   const isAddingToSelectedPlaylist = Boolean(selectedPlaylist) && !playlistMode;
 
+  const handleAuthError = (res) => {
+    if (res.status === 401) {
+      router.push("/?auth=login");
+      return true;
+    }
+    return false;
+  };
+
   const showToast = (message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -54,6 +62,7 @@ export default function SubjectPage({ params }) {
     setError("");
     try {
       const res = await fetch(`/api/subjects/${params.id}`);
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
@@ -75,6 +84,7 @@ export default function SubjectPage({ params }) {
     setSubjectsError("");
     try {
       const res = await fetch("/api/subjects");
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setAllSubjects(json.data);
@@ -146,6 +156,7 @@ export default function SubjectPage({ params }) {
               }
         ),
       });
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
@@ -189,6 +200,7 @@ export default function SubjectPage({ params }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subjectTitle: editingSubjectName }),
       });
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
@@ -217,12 +229,13 @@ export default function SubjectPage({ params }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deleteSubject: true }),
       });
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setAllSubjects((current) => current.filter((item) => item._id !== subjectId));
       showToast("Subject deleted");
       if (params.id === subjectId) {
-        router.push("/");
+        router.push("/subjects");
       }
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : "Failed to delete subject";
@@ -265,6 +278,7 @@ export default function SubjectPage({ params }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
@@ -305,6 +319,7 @@ export default function SubjectPage({ params }) {
           watched: !video.watched,
         }),
       });
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
@@ -328,6 +343,7 @@ export default function SubjectPage({ params }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
@@ -355,6 +371,7 @@ export default function SubjectPage({ params }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playlistId, deletePlaylist: true }),
       });
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
@@ -383,6 +400,7 @@ export default function SubjectPage({ params }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playlistId, playlistTitle: editingPlaylist.title }),
       });
+      if (handleAuthError(res)) return;
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubject(json.data);
@@ -415,7 +433,7 @@ export default function SubjectPage({ params }) {
 
       <section style={{ maxWidth: "1180px", margin: "0 auto", padding: "32px 20px 48px" }}>
         <Link
-          href="/"
+          href="/subjects"
           style={{
             display: "inline-flex",
             alignItems: "center",

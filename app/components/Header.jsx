@@ -2,13 +2,32 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { LibraryBig, Menu, X, Video, ListPlus } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Home, LibraryBig, ListPlus, LogIn, LogOut, Menu, User, Video, X } from "lucide-react";
 
 export default function Header() {
+  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [subjects, setSubjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const loadSession = async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        const json = await res.json();
+        if (json.success) setUser(json.data);
+      } catch {
+        setUser(null);
+      }
+    };
+
+    loadSession();
+    window.addEventListener("auth-changed", loadSession);
+    return () => window.removeEventListener("auth-changed", loadSession);
+  }, []);
 
   const fetchSubjects = async () => {
     if (subjects.length > 0) return;
@@ -16,6 +35,11 @@ export default function Header() {
     setError("");
     try {
       const res = await fetch("/api/subjects");
+      if (res.status === 401) {
+        setUser(null);
+        setSidebarOpen(false);
+        return;
+      }
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setSubjects(json.data);
@@ -36,6 +60,14 @@ export default function Header() {
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sidebarOpen]);
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setUser(null);
+    setSubjects([]);
+    setSidebarOpen(false);
+    window.location.href = "/";
+  };
 
   return (
     <>
@@ -81,29 +113,115 @@ export default function Header() {
           <span style={{ fontWeight: 800, fontSize: 18 }}>Memanshi</span>
         </Link>
 
-        <button
-          type="button"
-          onClick={() => setSidebarOpen((v) => !v)}
-          title="Subjects"
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            border: `1px solid ${sidebarOpen ? "#ef444466" : "var(--border)"}`,
-            background: sidebarOpen ? "#ef444422" : "var(--surface-2)",
-            color: sidebarOpen ? "#f87171" : "var(--text-muted)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "all 0.2s ease",
-          }}
-        >
-          <Menu size={18} />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {user ? (
+            <>
+              <Link
+                href="/subjects"
+                title="Subjects home"
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Home size={17} />
+              </Link>
+              <Link
+                href="/profile"
+                title="Profile"
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: "50%",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                }}
+              >
+                {user.image ? (
+                  <img
+                    src={user.image}
+                    alt={user.name || "Profile"}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <User size={17} />
+                )}
+              </Link>
+              <button
+                type="button"
+                onClick={() => setSidebarOpen((v) => !v)}
+                title="Subjects drawer"
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  border: `1px solid ${sidebarOpen ? "#ef444466" : "var(--border)"}`,
+                  background: sidebarOpen ? "#ef444422" : "var(--surface-2)",
+                  color: sidebarOpen ? "#f87171" : "var(--text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <Menu size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={logout}
+                title="Log out"
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <LogOut size={17} />
+              </button>
+            </>
+          ) : pathname === "/" ? null : (
+            <Link
+              href="/?auth=login"
+              title="Log in"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 10,
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text-muted)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <LogIn size={17} />
+            </Link>
+          )}
+        </div>
       </header>
 
-      {sidebarOpen && (
+      {user && sidebarOpen && (
         <div
           role="dialog"
           aria-modal="true"

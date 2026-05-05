@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
+import { ObjectId } from "mongodb";
+import { requireAuth } from "@/lib/auth";
 import { getSubjectsCollection, serializeSubject } from "@/lib/mongodb";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
+    const { user, response } = await requireAuth();
+    if (response) return response;
+
     const subjectsCollection = await getSubjectsCollection();
     const subjects = await subjectsCollection
-      .find({})
+      .find({ userId: new ObjectId(user._id) })
       .project({ name: 1, videos: 1, playlists: 1, createdAt: 1, updatedAt: 1 })
       .sort({ createdAt: -1 })
       .toArray();
@@ -25,6 +32,9 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    const { user, response } = await requireAuth();
+    if (response) return response;
+
     const subjectsCollection = await getSubjectsCollection();
     const body = await request.json();
     const name = body.name?.trim();
@@ -38,8 +48,10 @@ export async function POST(request) {
 
     const now = new Date();
     const subject = {
+      userId: new ObjectId(user._id),
       name,
       videos: [],
+      playlists: [],
       createdAt: now,
       updatedAt: now,
     };

@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
+import { requireAuth } from "@/lib/auth";
 import { getSubjectsCollection, serializeSubject } from "@/lib/mongodb";
 
 function getObjectId(id) {
   return ObjectId.isValid(id) ? new ObjectId(id) : null;
+}
+
+function getSubjectOwnerFilter(subjectId, user) {
+  return { _id: subjectId, userId: new ObjectId(user._id) };
 }
 
 function getYoutubeId(url) {
@@ -49,6 +54,8 @@ function decodeXml(text) {
 }
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+
+export const dynamic = "force-dynamic";
 
 function getYoutubeApiErrorMessage(errorPayload) {
   const details = errorPayload?.error?.errors || [];
@@ -179,6 +186,9 @@ async function getPlaylistVideos(playlistUrl) {
 
 export async function GET(_request, { params }) {
   try {
+    const { user, response } = await requireAuth();
+    if (response) return response;
+
     const subjectId = getObjectId(params.id);
     if (!subjectId) {
       return NextResponse.json(
@@ -188,7 +198,7 @@ export async function GET(_request, { params }) {
     }
 
     const subjectsCollection = await getSubjectsCollection();
-    const subject = await subjectsCollection.findOne({ _id: subjectId });
+    const subject = await subjectsCollection.findOne(getSubjectOwnerFilter(subjectId, user));
 
     if (!subject) {
       return NextResponse.json(
@@ -209,6 +219,9 @@ export async function GET(_request, { params }) {
 
 export async function POST(request, { params }) {
   try {
+    const { user, response } = await requireAuth();
+    if (response) return response;
+
     const subjectId = getObjectId(params.id);
     if (!subjectId) {
       return NextResponse.json(
@@ -230,7 +243,7 @@ export async function POST(request, { params }) {
         );
       }
 
-      const subject = await subjectsCollection.findOne({ _id: subjectId });
+      const subject = await subjectsCollection.findOne(getSubjectOwnerFilter(subjectId, user));
       if (!subject) {
         return NextResponse.json(
           { success: false, error: "Subject not found" },
@@ -250,7 +263,7 @@ export async function POST(request, { params }) {
       }
 
       const result = await subjectsCollection.findOneAndUpdate(
-        { _id: subjectId },
+        getSubjectOwnerFilter(subjectId, user),
         {
           $push: { playlists: { $each: [playlist], $position: 0 } },
           $set: { updatedAt: new Date() },
@@ -293,7 +306,7 @@ export async function POST(request, { params }) {
       }
 
       const result = await subjectsCollection.findOneAndUpdate(
-        { _id: subjectId, "playlists._id": playlistObjectId },
+        { ...getSubjectOwnerFilter(subjectId, user), "playlists._id": playlistObjectId },
         {
           $push: {
             "playlists.$.videos": { $each: [video], $position: 0 },
@@ -321,7 +334,7 @@ export async function POST(request, { params }) {
     }
 
     const result = await subjectsCollection.findOneAndUpdate(
-      { _id: subjectId },
+      getSubjectOwnerFilter(subjectId, user),
       {
         $push: { videos: { $each: [video], $position: 0 } },
         $set: { updatedAt: now },
@@ -360,6 +373,9 @@ export async function POST(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
+    const { user, response } = await requireAuth();
+    if (response) return response;
+
     const subjectId = getObjectId(params.id);
     if (!subjectId) {
       return NextResponse.json(
@@ -376,7 +392,7 @@ export async function PUT(request, { params }) {
     if (!body.playlistId && !body.videoId && body.subjectTitle !== undefined) {
       const newTitle = body.subjectTitle?.trim() || "";
       const result = await subjectsCollection.findOneAndUpdate(
-        { _id: subjectId },
+        getSubjectOwnerFilter(subjectId, user),
         { $set: { name: newTitle, updatedAt: now } },
         { returnDocument: "after" }
       );
@@ -403,7 +419,7 @@ export async function PUT(request, { params }) {
       }
 
       const result = await subjectsCollection.findOneAndUpdate(
-        { _id: subjectId, "playlists._id": playlistObjectId },
+        { ...getSubjectOwnerFilter(subjectId, user), "playlists._id": playlistObjectId },
         {
           $set: {
             "playlists.$.title": body.playlistTitle?.trim() || "",
@@ -496,7 +512,7 @@ export async function PUT(request, { params }) {
       }
 
       const result = await subjectsCollection.findOneAndUpdate(
-        { _id: subjectId },
+        getSubjectOwnerFilter(subjectId, user),
         { $set: playlistUpdateData },
         {
           arrayFilters: [
@@ -519,7 +535,7 @@ export async function PUT(request, { params }) {
     }
 
     const result = await subjectsCollection.findOneAndUpdate(
-      { _id: subjectId, "videos._id": videoObjectId },
+      { ...getSubjectOwnerFilter(subjectId, user), "videos._id": videoObjectId },
       { $set: updateData },
       { returnDocument: "after" }
     );
@@ -544,6 +560,9 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
+    const { user, response } = await requireAuth();
+    if (response) return response;
+
     const subjectId = getObjectId(params.id);
     if (!subjectId) {
       return NextResponse.json(
@@ -556,7 +575,9 @@ export async function DELETE(request, { params }) {
     const subjectsCollection = await getSubjectsCollection();
     // Delete entire subject
     if (body.deleteSubject) {
-      const result = await subjectsCollection.findOneAndDelete({ _id: subjectId });
+      const result = await subjectsCollection.findOneAndDelete(
+        getSubjectOwnerFilter(subjectId, user)
+      );
       const deletedSubject = result?.value || result;
       if (!deletedSubject) {
         return NextResponse.json(
@@ -579,7 +600,7 @@ export async function DELETE(request, { params }) {
       }
 
       const result = await subjectsCollection.findOneAndUpdate(
-        { _id: subjectId },
+        getSubjectOwnerFilter(subjectId, user),
         { $pull: { playlists: { _id: playlistObjectId } }, $set: { updatedAt: new Date() } },
         { returnDocument: "after" }
       );
@@ -613,7 +634,7 @@ export async function DELETE(request, { params }) {
       }
 
       const result = await subjectsCollection.findOneAndUpdate(
-        { _id: subjectId },
+        getSubjectOwnerFilter(subjectId, user),
         {
           $pull: { "playlists.$[playlist].videos": { _id: videoObjectId } },
           $set: { updatedAt: new Date() },
@@ -642,7 +663,7 @@ export async function DELETE(request, { params }) {
     }
 
     const result = await subjectsCollection.findOneAndUpdate(
-      { _id: subjectId },
+      getSubjectOwnerFilter(subjectId, user),
       {
         $pull: { videos: { _id: videoObjectId } },
         $set: { updatedAt: new Date() },
