@@ -3,30 +3,59 @@ import { ObjectId } from "mongodb";
 import { requireAuth } from "@/lib/auth";
 import { getSubjectsCollection, serializeSubject } from "@/lib/mongodb";
 
+// Converts a valid MongoDB id string into an ObjectId, otherwise returns null.
 function getObjectId(id) {
   return ObjectId.isValid(id) ? new ObjectId(id) : null;
 }
 
+// Builds the subject lookup filter and scopes it to the authenticated user.
 function getSubjectOwnerFilter(subjectId, user) {
   return { _id: subjectId, userId: new ObjectId(user._id) };
 }
 
+// Extracts a YouTube video id from common browser, mobile, share, embed, Shorts, and live URLs.
 function getYoutubeId(url) {
   try {
-    const parsed = new URL(url);
+    const normalizedUrl = url.match(/^https?:\/\//i) ? url : `https://${url}`;
+    const parsed = new URL(normalizedUrl);
+    const hostname = parsed.hostname.replace(/^www\./, "").toLowerCase();
 
-    if (parsed.hostname.includes("youtu.be")) {
-      return parsed.pathname.slice(1).split("/")[0];
+    const getVideoIdFromPath = (index) => {
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      return parts[index] || null;
+    };
+
+    if (hostname === "youtu.be") {
+      return getVideoIdFromPath(0);
     }
 
-    if (parsed.hostname.includes("youtube.com")) {
-      if (parsed.pathname.startsWith("/shorts/")) {
-        return parsed.pathname.split("/")[2];
+    if (hostname === "youtube.com" || hostname.endsWith(".youtube.com")) {
+      const directVideoId = parsed.searchParams.get("v");
+      if (directVideoId) {
+        return directVideoId;
       }
+
+      if (parsed.pathname.startsWith("/attribution_link")) {
+        const redirectedUrl = parsed.searchParams.get("u");
+        return redirectedUrl
+          ? getYoutubeId(new URL(redirectedUrl, "https://www.youtube.com").toString())
+          : null;
+      }
+
+      if (
+        parsed.pathname.startsWith("/shorts/") ||
+        parsed.pathname.startsWith("/embed/") ||
+        parsed.pathname.startsWith("/live/") ||
+        parsed.pathname.startsWith("/v/")
+      ) {
+        return getVideoIdFromPath(1);
+      }
+    }
+
+    if (hostname === "youtube-nocookie.com" || hostname.endsWith(".youtube-nocookie.com")) {
       if (parsed.pathname.startsWith("/embed/")) {
-        return parsed.pathname.split("/")[2];
+        return getVideoIdFromPath(1);
       }
-      return parsed.searchParams.get("v");
     }
   } catch {
     return null;
@@ -35,6 +64,7 @@ function getYoutubeId(url) {
   return null;
 }
 
+// Extracts a YouTube playlist id from a playlist URL.
 function getPlaylistId(url) {
   try {
     const parsed = new URL(url);
@@ -44,6 +74,7 @@ function getPlaylistId(url) {
   }
 }
 
+// Decodes XML/HTML entities returned by YouTube metadata.
 function decodeXml(text) {
   return text
     .replaceAll("&amp;", "&")
@@ -57,6 +88,7 @@ const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
 export const dynamic = "force-dynamic";
 
+// Converts YouTube API error responses into user-friendly messages.
 function getYoutubeApiErrorMessage(errorPayload) {
   const details = errorPayload?.error?.errors || [];
   const firstDetail = details[0];
@@ -90,6 +122,7 @@ function getYoutubeApiErrorMessage(errorPayload) {
   return message || "Failed to fetch playlist from YouTube.";
 }
 
+// Imports all public videos from a YouTube playlist using the YouTube Data API.
 async function getPlaylistVideos(playlistUrl) {
   const playlistId = getPlaylistId(playlistUrl);
   if (!playlistId) return null;
@@ -184,6 +217,7 @@ async function getPlaylistVideos(playlistUrl) {
   };
 }
 
+// Fetches one subject with its videos and playlists for the authenticated user.
 export async function GET(_request, { params }) {
   try {
     const { user, response } = await requireAuth();
@@ -217,6 +251,7 @@ export async function GET(_request, { params }) {
   }
 }
 
+// Adds either a single YouTube video or imports a YouTube playlist into a subject.
 export async function POST(request, { params }) {
   try {
     const { user, response } = await requireAuth();
@@ -371,6 +406,7 @@ export async function POST(request, { params }) {
   }
 }
 
+// Updates subject names, playlist titles, video metadata, or watched status.
 export async function PUT(request, { params }) {
   try {
     const { user, response } = await requireAuth();
@@ -558,6 +594,7 @@ export async function PUT(request, { params }) {
   }
 }
 
+// Deletes a subject, playlist, root video, or playlist video based on the request body.
 export async function DELETE(request, { params }) {
   try {
     const { user, response } = await requireAuth();

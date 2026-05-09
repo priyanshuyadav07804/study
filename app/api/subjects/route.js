@@ -5,6 +5,7 @@ import { getSubjectsCollection, serializeSubject } from "@/lib/mongodb";
 
 export const dynamic = "force-dynamic";
 
+// Fetches all subjects owned by the authenticated user.
 export async function GET() {
   try {
     const { user, response } = await requireAuth();
@@ -30,6 +31,7 @@ export async function GET() {
   }
 }
 
+// Creates a new empty subject for the authenticated user.
 export async function POST(request) {
   try {
     const { user, response } = await requireAuth();
